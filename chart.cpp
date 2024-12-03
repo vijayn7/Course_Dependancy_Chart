@@ -177,8 +177,8 @@ void parsePrerequisites(const string& filename, map<string, Course>& courseMap) 
 
 // Main function
 int main() {
-    string classNamesFile = "All_Classes_and_Names1.csv"; // Adjust path as needed
-    string prerequisitesFile = "CE_Sample_Schedule.tsv"; // Adjust path as needed
+    string classNamesFile = "All_Classes_and_Names.csv"; // Adjust path as needed
+    string prerequisitesFile = "CE_Sample_Schedule_test.tsv"; // Adjust path as needed
 
     // Parse the class names file
     map<string, Course> courseMap = parseClassNames(classNamesFile);
