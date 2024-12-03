@@ -53,10 +53,11 @@ def visualize_courses_interactive(course_map):
         G.add_node(course.class_number, name=course.class_name)
         for prereq_group in course.prerequisites:
             for prereq in prereq_group:
-                G.add_edge(prereq, course.class_number)
+                if prereq in course_map:  # Add edge only if prerequisite exists
+                    G.add_edge(prereq, course.class_number)
 
     # Generate graph layout with increased spacing
-    pos = nx.spring_layout(G, k=0.5, iterations=50)  # Adjust 'k' for node spacing
+    pos = nx.spring_layout(G, k=10.5, iterations=50)  # Adjust 'k' for node spacing
 
     # Create edge traces
     edge_x = []
@@ -94,7 +95,7 @@ def visualize_courses_interactive(course_map):
         hovertext=node_text,  # Show course names on hover
         hoverinfo="text",
         marker=dict(
-            size=30,  # Larger nodes
+            size=100,  # Larger nodes
             color="lightblue",
             line=dict(width=2, color="darkblue")
         ),
