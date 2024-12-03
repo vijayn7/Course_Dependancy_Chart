@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <set>
 #include <algorithm> // For std::find
 using namespace std;
 
@@ -22,12 +23,15 @@ vector<string> splitByWord(const string& str, const string& word) {
     while ((end = str.find(word, start)) != string::npos) {
         // Extract substring before the "word"
         string token = str.substr(start, end - start);
-        tokens.push_back(trim(token));
-        start = end + word.length(); // Move past the "word"
+        tokens.push_back(trim(token)); // Trim each token
+        start = end + word.length();   // Move past the "word"
     }
 
     // Add the last part of the string
-    tokens.push_back(trim(str.substr(start)));
+    string lastToken = str.substr(start);
+    if (!lastToken.empty()) {
+        tokens.push_back(trim(lastToken));
+    }
     return tokens;
 }
 
@@ -61,9 +65,9 @@ struct Course {
         for (const auto& group : prerequisites) {
             cout << "[";
             for (const auto& prereq : group) {
-                cout << prereq << "";
+                cout << prereq << " ";
             }
-            cout << "]";
+            cout << "] ";
         }
         cout << endl;
     }
@@ -137,12 +141,34 @@ void parsePrerequisites(const string& filename, map<string, Course>& courseMap) 
         if (it != courseMap.end()) {
             Course& course = it->second;
 
+            // Use a set to track unique prerequisite groups
+            set<string> uniquePrereqGroups;
+
             // Parse prerequisites (split by ",")
             vector<string> andGroups = split(prereqString, ',');
             for (string group : andGroups) {
+                group = trim(group); // Ensure each group is clean
                 // Parse "OR" conditions within each group
                 vector<string> options = splitByWord(group, "OR");
-                course.prerequisites.push_back(options);
+                vector<string> uniqueOptions;
+                for (const string& option : options) {
+                    if (uniquePrereqGroups.find(option) == uniquePrereqGroups.end()) {
+                        uniquePrereqGroups.insert(option);
+                        uniqueOptions.push_back(option);
+                    }
+                }
+                if (!uniqueOptions.empty()) {
+                    // Convert the group to a string to check for duplicates
+                    string groupStr;
+                    for (const auto& opt : uniqueOptions) {
+                        groupStr += opt + " ";
+                    }
+                    groupStr = trim(groupStr);
+                    if (uniquePrereqGroups.find(groupStr) == uniquePrereqGroups.end()) {
+                        uniquePrereqGroups.insert(groupStr);
+                        course.prerequisites.push_back(uniqueOptions); // Add parsed group
+                    }
+                }
             }
         }
     }
