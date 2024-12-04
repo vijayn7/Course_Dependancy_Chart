@@ -14,18 +14,19 @@ def generate_colors():
 
 # Class to represent a course
 class Course:
-    def __init__(self, class_number, name, group):
+    def __init__(self, class_number, name, group, credits):
         self.class_number = class_number
         self.name = name
         self.group = group
+        self.credits = credits
         self.prerequisites = []
 
     def __repr__(self):
-        return f"Course({self.class_number}, {self.name}, {self.group}, {self.prerequisites})"
+        return f"Course({self.class_number}, {self.name}, {self.group}, {self.credits}, {self.prerequisites})"
 
 # Function to parse class details and groups from `classes.csv`
 def parse_classes(file_path):
-    """Parse course details and groups from a CSV file."""
+    """Parse course details, groups, and credits from a CSV file."""
     courses = {}
     group_colors = {}
     color_generator = generate_colors()
@@ -36,13 +37,14 @@ def parse_classes(file_path):
             class_number = row["Class Number:"].strip()
             name = row["Class Name:"].strip()
             group = row["Group:"].strip()  # Extract group information
+            credits = row["Credits:"].strip()
 
             # Assign a color to the group if not already assigned
             if group not in group_colors:
                 group_colors[group] = next(color_generator)
 
             # Create a course object and store it
-            courses[class_number] = Course(class_number, name, group)
+            courses[class_number] = Course(class_number, name, group, credits)
 
     return courses, group_colors
 
@@ -68,7 +70,7 @@ def visualize_courses_interactive(courses, group_colors):
 
     # Add nodes and edges
     for course in courses.values():
-        G.add_node(course.class_number, group=course.group, name=course.name)
+        G.add_node(course.class_number, group=course.group, name=course.name, credits=course.credits)
         for prereq_group in course.prerequisites:
             for prereq in prereq_group:
                 if prereq in courses:  # Add edge only if prerequisite exists
@@ -123,8 +125,9 @@ def visualize_courses_interactive(courses, group_colors):
         node_y.append(y)
         group = G.nodes[node].get("group", "Unknown")
         name = G.nodes[node].get("name", "Unknown")
+        credits = G.nodes[node].get("credits", "0")
         node_text.append(node)  # Only display course number
-        node_hovertext.append(f"{node}: {name}")  # Show course name on hover
+        node_hovertext.append(f"{node}: {name} ({credits} credits)")  # Show course name and credits on hover
         node_color.append(group_colors.get(group, "gray"))  # Default to gray if group not found
 
     node_trace = go.Scatter(
@@ -132,7 +135,7 @@ def visualize_courses_interactive(courses, group_colors):
         y=node_y,
         mode="markers+text",
         text=node_text,  # Display course numbers only
-        hovertext=node_hovertext,  # Display course name on hover
+        hovertext=node_hovertext,  # Display course name and credits on hover
         hoverinfo="text",
         textposition="top center",  # Position text above nodes
         marker=dict(
