@@ -1,7 +1,7 @@
 import csv
 import networkx as nx
 import plotly.graph_objects as go
-from dash import Dash, dcc, html, Input, Output
+from dash import Dash, dcc, html, Input, Output, ctx
 from itertools import cycle
 
 
@@ -73,7 +73,8 @@ def parse_prerequisites(file_path, courses):
                 ]
                 courses[class_number].prerequisites.extend(prereq_groups)
 
-def create_figure(courses, group_colors, group_credits, hover_node=None):
+
+def create_figure(courses, group_colors, group_credits):
     """Create the Plotly figure with the current state of the graph."""
     G = nx.DiGraph()  # Create a directed graph
     group_completed_credits = {group: 0 for group in group_credits}
@@ -111,8 +112,7 @@ def create_figure(courses, group_colors, group_credits, hover_node=None):
     for edge in G.edges():
         x0, y0 = pos[edge[0]]
         x1, y1 = pos[edge[1]]
-        
-        # Check if the prerequisite is satisfied
+
         if courses[edge[0]].completed:
             satisfied_edge_x.extend([x0, x1, None])
             satisfied_edge_y.extend([y0, y1, None])
@@ -123,7 +123,7 @@ def create_figure(courses, group_colors, group_credits, hover_node=None):
     satisfied_edge_trace = go.Scatter(
         x=satisfied_edge_x,
         y=satisfied_edge_y,
-        line=dict(width=2, color="green"),  # Color for satisfied prerequisites
+        line=dict(width=2, color="green"),
         hoverinfo="none",
         mode="lines"
     )
@@ -131,7 +131,7 @@ def create_figure(courses, group_colors, group_credits, hover_node=None):
     unsatisfied_edge_trace = go.Scatter(
         x=unsatisfied_edge_x,
         y=unsatisfied_edge_y,
-        line=dict(width=2, color="red"),  # Color for unsatisfied prerequisites
+        line=dict(width=2, color="red"),
         hoverinfo="none",
         mode="lines"
     )
@@ -182,7 +182,6 @@ def create_figure(courses, group_colors, group_credits, hover_node=None):
         )
     )
 
-    # Add group labels
     group_labels = [
         dict(
             x=group_positions[group] * 5,
@@ -194,11 +193,10 @@ def create_figure(courses, group_colors, group_credits, hover_node=None):
         ) for group in group_colors
     ]
 
-    # Combine traces and layout
     fig = go.Figure(
         data=[satisfied_edge_trace, unsatisfied_edge_trace, node_trace],
         layout=go.Layout(
-            title="Interactive Course Dependency Graph with Prerequisite Coloring",
+            title="Interactive Course Dependency Graph with Reset Button",
             titlefont_size=20,
             showlegend=False,
             hovermode="closest",
@@ -212,6 +210,7 @@ def create_figure(courses, group_colors, group_credits, hover_node=None):
 
     return fig
 
+
 def main():
     # File paths
     classes_file = "./mnt/data/classes.csv"
@@ -223,26 +222,30 @@ def main():
     group_credits = parse_group_credits(groups_file)
     parse_prerequisites(prereqs_file, courses)
 
-    # Initialize Dash app
+    original_courses = {key: course.completed for key, course in courses.items()}
+
     app = Dash(__name__)
 
     app.layout = html.Div([
         dcc.Graph(id="course-graph", config={"displayModeBar": False}),
-        html.Div(id="click-data", style={"display": "none"})  # Hidden div to store click data
+        html.Button("Reset", id="reset-button", n_clicks=0),
     ])
 
     @app.callback(
         Output("course-graph", "figure"),
-        [Input("course-graph", "clickData")]
+        [Input("course-graph", "clickData"), Input("reset-button", "n_clicks")]
     )
-    def toggle_completion(click_data):
-        if click_data:
-            node_id = click_data["points"][0]["text"]  # Extract clicked node ID
+    def update_graph(click_data, reset_clicks):
+        triggered_id = ctx.triggered_id
+        if triggered_id == "reset-button":
+            for key in courses:
+                courses[key].completed = original_courses[key]
+        elif triggered_id == "course-graph" and click_data:
+            node_id = click_data["points"][0]["text"]
             if node_id in courses:
-                courses[node_id].completed = not courses[node_id].completed  # Toggle completion status
+                courses[node_id].completed = not courses[node_id].completed
         return create_figure(courses, group_colors, group_credits)
 
-    # Run the app
     app.run_server(debug=True)
 
 
