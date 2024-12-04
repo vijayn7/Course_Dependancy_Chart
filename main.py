@@ -73,7 +73,7 @@ def parse_prerequisites(file_path, courses):
                 ]
                 courses[class_number].prerequisites.extend(prereq_groups)
 
-def create_figure(courses, group_colors, group_credits):
+def create_figure(courses, group_colors, group_credits, hover_node=None):
     """Create the Plotly figure with the current state of the graph."""
     G = nx.DiGraph()  # Create a directed graph
     group_completed_credits = {group: 0 for group in group_credits}
@@ -85,10 +85,10 @@ def create_figure(courses, group_colors, group_credits):
             group_completed_credits[course.group] += course.credits
         for prereq_group in course.prerequisites:
             for prereq in prereq_group:
-                if prereq in courses:
+                if prereq in courses:  # Add edge only if prerequisite exists
                     G.add_edge(prereq, course.class_number)
 
-    # Define positions for nodes
+    # Define horizontal positions for each group
     group_order = list(group_colors.keys())
     group_positions = {group: i for i, group in enumerate(group_order)}
     pos = {}
@@ -103,18 +103,35 @@ def create_figure(courses, group_colors, group_credits):
         pos[node] = (x, y)
 
     # Create edge traces
-    edge_x = []
-    edge_y = []
+    satisfied_edge_x = []
+    satisfied_edge_y = []
+    unsatisfied_edge_x = []
+    unsatisfied_edge_y = []
+
     for edge in G.edges():
         x0, y0 = pos[edge[0]]
         x1, y1 = pos[edge[1]]
-        edge_x.extend([x0, x1, None])
-        edge_y.extend([y0, y1, None])
+        
+        # Check if the prerequisite is satisfied
+        if courses[edge[0]].completed:
+            satisfied_edge_x.extend([x0, x1, None])
+            satisfied_edge_y.extend([y0, y1, None])
+        else:
+            unsatisfied_edge_x.extend([x0, x1, None])
+            unsatisfied_edge_y.extend([y0, y1, None])
 
-    edge_trace = go.Scatter(
-        x=edge_x,
-        y=edge_y,
-        line=dict(width=1, color="#888"),
+    satisfied_edge_trace = go.Scatter(
+        x=satisfied_edge_x,
+        y=satisfied_edge_y,
+        line=dict(width=2, color="green"),  # Color for satisfied prerequisites
+        hoverinfo="none",
+        mode="lines"
+    )
+
+    unsatisfied_edge_trace = go.Scatter(
+        x=unsatisfied_edge_x,
+        y=unsatisfied_edge_y,
+        line=dict(width=2, color="red"),  # Color for unsatisfied prerequisites
         hoverinfo="none",
         mode="lines"
     )
@@ -179,9 +196,9 @@ def create_figure(courses, group_colors, group_credits):
 
     # Combine traces and layout
     fig = go.Figure(
-        data=[edge_trace, node_trace],
+        data=[satisfied_edge_trace, unsatisfied_edge_trace, node_trace],
         layout=go.Layout(
-            title="Interactive Course Dependency Graph with Toggle",
+            title="Interactive Course Dependency Graph with Prerequisite Coloring",
             titlefont_size=20,
             showlegend=False,
             hovermode="closest",
