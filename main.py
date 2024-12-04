@@ -14,15 +14,16 @@ def generate_colors():
 
 # Class to represent a course
 class Course:
-    def __init__(self, class_number, name, group, credits):
+    def __init__(self, class_number, name, group, credits, completed):
         self.class_number = class_number
         self.name = name
         self.group = group
-        self.credits = credits
+        self.credits = int(credits)
+        self.completed = completed.lower() == "true"  # Convert to boolean
         self.prerequisites = []
 
     def __repr__(self):
-        return f"Course({self.class_number}, {self.name}, {self.group}, {self.credits}, {self.prerequisites})"
+        return f"Course({self.class_number}, {self.name}, {self.group}, {self.credits}, {self.completed}, {self.prerequisites})"
 
 # Function to parse class details and groups from `classes.csv`
 def parse_classes(file_path):
@@ -38,15 +39,28 @@ def parse_classes(file_path):
             name = row["Class Name:"].strip()
             group = row["Group:"].strip()  # Extract group information
             credits = row["Credits:"].strip()
+            completed = row["Completed:"].strip()
 
             # Assign a color to the group if not already assigned
             if group not in group_colors:
                 group_colors[group] = next(color_generator)
 
             # Create a course object and store it
-            courses[class_number] = Course(class_number, name, group, credits)
+            courses[class_number] = Course(class_number, name, group, credits, completed)
 
     return courses, group_colors
+
+# Function to parse group credits from `groups.csv`
+def parse_group_credits(file_path):
+    """Parse required credits for each group from `groups.csv`."""
+    group_credits = {}
+    with open(file_path, newline='', encoding='utf-8') as csvfile:
+        reader = csv.DictReader(csvfile)
+        for row in reader:
+            group = row["Group:"].strip()
+            credits_required = int(row["Credits Needed:"].strip())
+            group_credits[group] = credits_required
+    return group_credits
 
 # Function to parse prerequisites from `prereqs.tsv`
 def parse_prerequisites(file_path, courses):
@@ -64,13 +78,16 @@ def parse_prerequisites(file_path, courses):
                 courses[class_number].prerequisites.extend(prereq_groups)
 
 # Visualize the dependency graph interactively
-def visualize_courses_interactive(courses, group_colors):
+def visualize_courses_interactive(courses, group_colors, group_credits):
     """Visualize the course dependency graph interactively with labels above nodes."""
     G = nx.DiGraph()  # Create a directed graph
 
     # Add nodes and edges
+    group_completed_credits = {group: 0 for group in group_credits}  # Initialize completed credits per group
     for course in courses.values():
-        G.add_node(course.class_number, group=course.group, name=course.name, credits=course.credits)
+        G.add_node(course.class_number, group=course.group, name=course.name, credits=course.credits, completed=course.completed)
+        if course.completed:
+            group_completed_credits[course.group] += course.credits  # Accumulate completed credits
         for prereq_group in course.prerequisites:
             for prereq in prereq_group:
                 if prereq in courses:  # Add edge only if prerequisite exists
@@ -91,10 +108,13 @@ def visualize_courses_interactive(courses, group_colors):
         group_counters[group] += 1
         pos[node] = (x, y)
 
-    # Add group labels
+    # Add group labels with credits progress
+    # Add group labels with credits progress
     group_labels = []
     for group, x in group_positions.items():
-        group_labels.append((x * 5, 2, group))  # Position labels above their group (y=2)
+        completed = group_completed_credits.get(group, 0)
+        required = group_credits.get(group, 0)
+        group_labels.append((x * 5, 2, f"{group}<br>({completed}/{required} credits completed)"))  # Line break added
 
     # Create edge traces
     edge_x = []
@@ -119,6 +139,8 @@ def visualize_courses_interactive(courses, group_colors):
     node_text = []
     node_hovertext = []
     node_color = []
+    node_border_color = []  # Add a border color for completed nodes
+    node_size = []  # Different size for completed nodes
     for node in G.nodes():
         x, y = pos[node]
         node_x.append(x)
@@ -126,9 +148,19 @@ def visualize_courses_interactive(courses, group_colors):
         group = G.nodes[node].get("group", "Unknown")
         name = G.nodes[node].get("name", "Unknown")
         credits = G.nodes[node].get("credits", "0")
+        completed = G.nodes[node].get("completed", False)
+
         node_text.append(node)  # Only display course number
         node_hovertext.append(f"{node}: {name} ({credits} credits)")  # Show course name and credits on hover
         node_color.append(group_colors.get(group, "gray"))  # Default to gray if group not found
+
+        # Highlight completed nodes
+        if completed:
+            node_border_color.append("gold")
+            node_size.append(30)  # Larger size for completed nodes
+        else:
+            node_border_color.append("black")
+            node_size.append(20)  # Default size for uncompleted nodes
 
     node_trace = go.Scatter(
         x=node_x,
@@ -139,11 +171,11 @@ def visualize_courses_interactive(courses, group_colors):
         hoverinfo="text",
         textposition="top center",  # Position text above nodes
         marker=dict(
-            size=20,  # Uniform node size
+            size=node_size,  # Set node size dynamically
             color=node_color,
             opacity=0.8,  # Set opacity for semi-transparent squares
             symbol="square",  # Rectangle shape
-            line=dict(width=2, color="darkblue")
+            line=dict(width=3, color=node_border_color)  # Set border color dynamically
         ),
         textfont=dict(
             size=14,  # Adjust text size for readability
@@ -164,7 +196,7 @@ def visualize_courses_interactive(courses, group_colors):
     fig = go.Figure(
         data=[edge_trace, node_trace],
         layout=go.Layout(
-            title="Interactive Course Dependency Graph with Dynamic Group Colors",
+            title="Interactive Course Dependency Graph with Dynamic Group Colors and Credits Progress",
             titlefont_size=20,
             showlegend=False,
             hovermode="closest",
@@ -182,16 +214,20 @@ def visualize_courses_interactive(courses, group_colors):
 def main():
     # File paths
     classes_file = "./mnt/data/classes.csv"
+    groups_file = "./mnt/data/groups.csv"
     prereqs_file = "./mnt/data/prereqs.tsv"
 
     # Parse course details and groups
     courses, group_colors = parse_classes(classes_file)
 
+    # Parse group credits
+    group_credits = parse_group_credits(groups_file)
+
     # Parse prerequisites
     parse_prerequisites(prereqs_file, courses)
 
     # Visualize the dependency graph interactively
-    visualize_courses_interactive(courses, group_colors)
+    visualize_courses_interactive(courses, group_colors, group_credits)
 
 
 if __name__ == "__main__":
