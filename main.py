@@ -4,7 +4,7 @@ import plotly.graph_objects as go
 from dash import Dash, dcc, html, Input, Output
 from itertools import cycle
 
-# Define a function to generate colors dynamically
+
 def generate_colors():
     """Generate a cycle of colors for dynamically assigning group colors."""
     colors = [
@@ -13,22 +13,21 @@ def generate_colors():
     ]
     return cycle(colors)
 
-# Class to represent a course
+
 class Course:
     def __init__(self, class_number, name, group, credits, completed):
         self.class_number = class_number
         self.name = name
         self.group = group
         self.credits = int(credits)
-        self.completed = completed.lower() == "true"  # Convert to boolean
+        self.completed = completed.lower() == "true"
         self.prerequisites = []
 
     def __repr__(self):
         return f"Course({self.class_number}, {self.name}, {self.group}, {self.credits}, {self.completed}, {self.prerequisites})"
 
-# Function to parse class details and groups from `classes.csv`
+
 def parse_classes(file_path):
-    """Parse course details, groups, and credits from a CSV file."""
     courses = {}
     group_colors = {}
     color_generator = generate_colors()
@@ -38,22 +37,19 @@ def parse_classes(file_path):
         for row in reader:
             class_number = row["Class Number:"].strip()
             name = row["Class Name:"].strip()
-            group = row["Group:"].strip()  # Extract group information
+            group = row["Group:"].strip()
             credits = row["Credits:"].strip()
             completed = row["Completed:"].strip()
 
-            # Assign a color to the group if not already assigned
             if group not in group_colors:
                 group_colors[group] = next(color_generator)
 
-            # Create a course object and store it
             courses[class_number] = Course(class_number, name, group, credits, completed)
 
     return courses, group_colors
 
-# Function to parse group credits from `groups.csv`
+
 def parse_group_credits(file_path):
-    """Parse required credits for each group from `groups.csv`."""
     group_credits = {}
     with open(file_path, newline='', encoding='utf-8') as csvfile:
         reader = csv.DictReader(csvfile)
@@ -63,9 +59,8 @@ def parse_group_credits(file_path):
             group_credits[group] = credits_required
     return group_credits
 
-# Function to parse prerequisites from `prereqs.tsv`
+
 def parse_prerequisites(file_path, courses):
-    """Parse prerequisites from a TSV file and update courses."""
     with open(file_path, newline='', encoding='utf-8') as tsvfile:
         reader = csv.DictReader(tsvfile, delimiter='\t')
         for row in reader:
@@ -78,8 +73,7 @@ def parse_prerequisites(file_path, courses):
                 ]
                 courses[class_number].prerequisites.extend(prereq_groups)
 
-# Create the graph figure dynamically
-def create_figure(courses, group_colors, group_credits, hover_node=None):
+def create_figure(courses, group_colors, group_credits):
     """Create the Plotly figure with the current state of the graph."""
     G = nx.DiGraph()  # Create a directed graph
     group_completed_credits = {group: 0 for group in group_credits}
@@ -91,10 +85,10 @@ def create_figure(courses, group_colors, group_credits, hover_node=None):
             group_completed_credits[course.group] += course.credits
         for prereq_group in course.prerequisites:
             for prereq in prereq_group:
-                if prereq in courses:  # Add edge only if prerequisite exists
+                if prereq in courses:
                     G.add_edge(prereq, course.class_number)
 
-    # Define horizontal positions for each group
+    # Define positions for nodes
     group_order = list(group_colors.keys())
     group_positions = {group: i for i, group in enumerate(group_order)}
     pos = {}
@@ -108,36 +102,19 @@ def create_figure(courses, group_colors, group_credits, hover_node=None):
         group_counters[group] += 1
         pos[node] = (x, y)
 
-    # Separate edges into highlighted and default
-    highlighted_edge_x = []
-    highlighted_edge_y = []
-    default_edge_x = []
-    default_edge_y = []
-
+    # Create edge traces
+    edge_x = []
+    edge_y = []
     for edge in G.edges():
         x0, y0 = pos[edge[0]]
         x1, y1 = pos[edge[1]]
-        if hover_node and (edge[0] == hover_node or edge[1] == hover_node):
-            highlighted_edge_x.extend([x0, x1, None])
-            highlighted_edge_y.extend([y0, y1, None])
-        else:
-            default_edge_x.extend([x0, x1, None])
-            default_edge_y.extend([y0, y1, None])
+        edge_x.extend([x0, x1, None])
+        edge_y.extend([y0, y1, None])
 
-    # Default edges
-    default_edge_trace = go.Scatter(
-        x=default_edge_x,
-        y=default_edge_y,
+    edge_trace = go.Scatter(
+        x=edge_x,
+        y=edge_y,
         line=dict(width=1, color="#888"),
-        hoverinfo="none",
-        mode="lines"
-    )
-
-    # Highlighted edges
-    highlighted_edge_trace = go.Scatter(
-        x=highlighted_edge_x,
-        y=highlighted_edge_y,
-        line=dict(width=2, color="red"),
         hoverinfo="none",
         mode="lines"
     )
@@ -202,9 +179,9 @@ def create_figure(courses, group_colors, group_credits, hover_node=None):
 
     # Combine traces and layout
     fig = go.Figure(
-        data=[default_edge_trace, highlighted_edge_trace, node_trace],
+        data=[edge_trace, node_trace],
         layout=go.Layout(
-            title="Interactive Course Dependency Graph with Edge Highlighting",
+            title="Interactive Course Dependency Graph with Toggle",
             titlefont_size=20,
             showlegend=False,
             hovermode="closest",
@@ -218,7 +195,6 @@ def create_figure(courses, group_colors, group_credits, hover_node=None):
 
     return fig
 
-# Main function with Dash app
 def main():
     # File paths
     classes_file = "./mnt/data/classes.csv"
@@ -235,21 +211,23 @@ def main():
 
     app.layout = html.Div([
         dcc.Graph(id="course-graph", config={"displayModeBar": False}),
-        html.Div(id="hover-data", style={"display": "none"}),  # Hidden div to store hover data
+        html.Div(id="click-data", style={"display": "none"})  # Hidden div to store click data
     ])
 
     @app.callback(
         Output("course-graph", "figure"),
-        [Input("course-graph", "hoverData")]
+        [Input("course-graph", "clickData")]
     )
-    def highlight_edges(hover_data):
-        hover_node = None
-        if hover_data:
-            hover_node = hover_data["points"][0]["text"]
-        return create_figure(courses, group_colors, group_credits, hover_node)
+    def toggle_completion(click_data):
+        if click_data:
+            node_id = click_data["points"][0]["text"]  # Extract clicked node ID
+            if node_id in courses:
+                courses[node_id].completed = not courses[node_id].completed  # Toggle completion status
+        return create_figure(courses, group_colors, group_credits)
 
     # Run the app
     app.run_server(debug=True)
+
 
 if __name__ == "__main__":
     main()
