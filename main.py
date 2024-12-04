@@ -2,62 +2,65 @@ import csv
 import networkx as nx
 import plotly.graph_objects as go
 
+
+# Define colors for each group
+GROUP_COLORS = {
+    "CoE Common Core": "blue",
+    "CE Program Core Courses": "red",
+    "Core Electives": "green",
+    "Upper Level CE Electives": "yellow",
+    "Unknown": "gray"  # Default color for unknown groups
+}
+
+
 # Class to represent a course
 class Course:
-    def __init__(self, class_number, class_name):
+    def __init__(self, class_number, prerequisites, group):
         self.class_number = class_number
-        self.class_name = class_name
-        self.prerequisites = []
-
-    def add_prerequisites(self, prereq_groups):
-        """Add prerequisite groups to the course."""
-        self.prerequisites.extend(prereq_groups)
+        self.prerequisites = prerequisites
+        self.group = group
 
     def __repr__(self):
-        return f"Course({self.class_number}, {self.class_name})"
+        return f"Course({self.class_number}, {self.prerequisites}, {self.group})"
 
-# Function to parse course names from a CSV file
-def parse_course_names(file_path):
-    """Parse course names from a CSV file."""
+
+# Function to parse courses and prerequisites from the TSV file
+def parse_courses(file_path):
+    """Parse courses from a TSV file."""
     course_map = {}
-    with open(file_path, newline='', encoding='utf-8') as csvfile:
-        reader = csv.reader(csvfile)
-        next(reader)  # Skip header
+    with open(file_path, newline='', encoding='utf-8') as tsvfile:
+        reader = csv.DictReader(tsvfile, delimiter='\t')
         for row in reader:
-            course_number, course_name = row[0].strip(), row[1].strip()
-            course_map[course_number] = Course(course_number, course_name)
+            class_number = row["Class Number:"].strip()
+            prerequisites = row["Prerequisites:"].strip()
+            group = row["Group:"].strip()
+
+            # Parse prerequisites into groups
+            prereq_groups = [
+                [item.strip() for item in group.split("OR")]
+                for group in prerequisites.split(",") if prerequisites
+            ]
+
+            # Create a Course object and add to the map
+            course_map[class_number] = Course(class_number, prereq_groups, group)
     return course_map
 
-# Function to parse prerequisites from a TSV file
-def parse_prerequisites(file_path, course_map):
-    """Parse prerequisites from a TSV file and update the course map."""
-    with open(file_path, newline='', encoding='utf-8') as tsvfile:
-        reader = csv.reader(tsvfile, delimiter='\t')
-        next(reader)  # Skip header
-        for row in reader:
-            course_number = row[0].strip()
-            if course_number in course_map:
-                prereq_string = row[2].strip()
-                prereq_groups = [
-                    [item.strip() for item in group.split("OR")]
-                    for group in prereq_string.split(",")
-                ]
-                course_map[course_number].add_prerequisites(prereq_groups)
 
+# Visualize the dependency graph interactively with group-based colors
 def visualize_courses_interactive(course_map):
     """Visualize the course dependency graph interactively."""
     G = nx.DiGraph()  # Create a directed graph
 
     # Add nodes and edges
     for course in course_map.values():
-        G.add_node(course.class_number, name=course.class_name)
+        G.add_node(course.class_number, group=course.group)
         for prereq_group in course.prerequisites:
             for prereq in prereq_group:
                 if prereq in course_map:  # Add edge only if prerequisite exists
                     G.add_edge(prereq, course.class_number)
 
-    # Generate graph layout with increased spacing
-    pos = nx.spring_layout(G, k=10.5, iterations=50)  # Adjust 'k' for node spacing
+    # Generate graph layout
+    pos = nx.spring_layout(G, k=0.5, iterations=50)
 
     # Create edge traces
     edge_x = []
@@ -80,27 +83,29 @@ def visualize_courses_interactive(course_map):
     node_x = []
     node_y = []
     node_text = []
+    node_color = []
     for node in G.nodes():
         x, y = pos[node]
         node_x.append(x)
         node_y.append(y)
-        node_name = G.nodes[node].get('name', 'Unknown')  # Use 'Unknown' if 'name' attribute is missing
-        node_text.append(f"{node}: {node_name}")  # Tooltip text includes course name
+        group = G.nodes[node].get("group", "Unknown")
+        node_text.append(f"{node} ({group})")
+        node_color.append(GROUP_COLORS.get(group, "gray"))  # Default to gray if group not found
 
     node_trace = go.Scatter(
         x=node_x,
         y=node_y,
         mode="markers+text",
         text=list(G.nodes()),  # Display course numbers
-        hovertext=node_text,  # Show course names on hover
+        hovertext=node_text,  # Show course and group on hover
         hoverinfo="text",
         marker=dict(
-            size=100,  # Larger nodes
-            color="lightblue",
+            size=30,
+            color=node_color,
             line=dict(width=2, color="darkblue")
         ),
         textfont=dict(
-            size=12  # Larger font size for better readability
+            size=12
         )
     )
 
@@ -112,7 +117,7 @@ def visualize_courses_interactive(course_map):
             titlefont_size=20,
             showlegend=False,
             hovermode="closest",
-            margin=dict(b=0, l=0, r=0, t=50),  # Increased top margin for better title spacing
+            margin=dict(b=0, l=0, r=0, t=50),
             xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
             yaxis=dict(showgrid=False, zeroline=False, showticklabels=False)
         )
@@ -121,18 +126,18 @@ def visualize_courses_interactive(course_map):
     # Show the graph
     fig.show()
 
+
 # Main function
 def main():
-    # File paths
-    course_names_file = "All_Classes_and_Names.csv"
-    prerequisites_file = "CE_Sample_Schedule.tsv"
+    # File path for the updated TSV file
+    tsv_file_path = "CE_Sample_Schedule.tsv"
 
-    # Parse data
-    course_map = parse_course_names(course_names_file)
-    parse_prerequisites(prerequisites_file, course_map)
+    # Parse courses
+    course_map = parse_courses(tsv_file_path)
 
     # Visualize the dependency graph interactively
     visualize_courses_interactive(course_map)
+
 
 if __name__ == "__main__":
     main()
