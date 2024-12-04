@@ -192,6 +192,7 @@ def create_figure(courses, group_colors, group_credits):
             showlegend=False,
             hovermode="closest",
             margin=dict(b=0, l=0, r=0, t=50),
+            height=1000,
             xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
             yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
             annotations=group_labels
