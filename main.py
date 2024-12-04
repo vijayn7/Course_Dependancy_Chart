@@ -48,7 +48,7 @@ def parse_courses(file_path):
 
 # Visualize the dependency graph interactively with group-based colors
 def visualize_courses_interactive(course_map):
-    """Visualize the course dependency graph interactively."""
+    """Visualize the course dependency graph interactively with group labels and rectangle nodes."""
     G = nx.DiGraph()  # Create a directed graph
 
     # Add nodes and edges
@@ -59,8 +59,24 @@ def visualize_courses_interactive(course_map):
                 if prereq in course_map:  # Add edge only if prerequisite exists
                     G.add_edge(prereq, course.class_number)
 
-    # Generate graph layout
-    pos = nx.spring_layout(G, k=0.5, iterations=50)
+    # Define horizontal positions for each group
+    group_order = ["CoE Common Core", "CE Program Core Courses", "Core Electives", "Upper Level CE Electives", "Unknown"]
+    group_positions = {group: i for i, group in enumerate(group_order)}
+
+    # Generate positions for nodes
+    pos = {}
+    group_counters = {group: 0 for group in group_order}  # Track vertical position within each group
+    for node in G.nodes():
+        group = G.nodes[node].get("group", "Unknown")
+        x = group_positions[group] * 3  # Spread groups horizontally
+        y = group_counters[group] * -1.5  # Space nodes vertically within each group
+        group_counters[group] += 1
+        pos[node] = (x, y)
+
+    # Add group labels
+    group_labels = []
+    for group, x in group_positions.items():
+        group_labels.append((x * 3, 2, group))  # Position labels above their group (y=2)
 
     # Create edge traces
     edge_x = []
@@ -79,7 +95,7 @@ def visualize_courses_interactive(course_map):
         mode="lines"
     )
 
-    # Create node traces
+    # Create node traces with rectangle shapes
     node_x = []
     node_y = []
     node_text = []
@@ -89,7 +105,7 @@ def visualize_courses_interactive(course_map):
         node_x.append(x)
         node_y.append(y)
         group = G.nodes[node].get("group", "Unknown")
-        node_text.append(f"{node} ({group})")
+        node_text.append(f"{node}: {G.nodes[node].get('name', 'Unknown')}")
         node_color.append(GROUP_COLORS.get(group, "gray"))  # Default to gray if group not found
 
     node_trace = go.Scatter(
@@ -102,24 +118,35 @@ def visualize_courses_interactive(course_map):
         marker=dict(
             size=30,
             color=node_color,
+            symbol="square",  # Change nodes to rectangles
             line=dict(width=2, color="darkblue")
         ),
         textfont=dict(
-            size=12
+            size=14  # Increase font size for better readability
         )
     )
+
+    # Add group labels as annotations
+    annotations = [
+        dict(
+            x=x, y=y, text=label, showarrow=False,
+            font=dict(size=16, color="black"),
+            xanchor="center", yanchor="bottom"
+        ) for x, y, label in group_labels
+    ]
 
     # Combine traces and layout
     fig = go.Figure(
         data=[edge_trace, node_trace],
         layout=go.Layout(
-            title="Interactive Course Dependency Graph",
+            title="Interactive Course Dependency Graph with Group Labels",
             titlefont_size=20,
             showlegend=False,
             hovermode="closest",
             margin=dict(b=0, l=0, r=0, t=50),
             xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-            yaxis=dict(showgrid=False, zeroline=False, showticklabels=False)
+            yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+            annotations=annotations  # Add group labels
         )
     )
 
