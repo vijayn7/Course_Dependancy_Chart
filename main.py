@@ -1,82 +1,81 @@
 import csv
 import networkx as nx
 import plotly.graph_objects as go
+from itertools import cycle
 
-
-# Define colors for each group
-GROUP_COLORS = {
-    "CoE Common Core": "blue",
-    "CE Program Core Courses": "red",
-    "Core Electives": "green",
-    "Upper Level CE Electives": "yellow",
-    "Unknown": "gray"  # Default color for unknown groups
-}
-
+# Define a function to generate colors dynamically
+def generate_colors():
+    """Generate a cycle of colors for dynamically assigning group colors."""
+    colors = [
+        "blue", "red", "green", "yellow", "purple", "orange",
+        "cyan", "magenta", "lime", "pink", "teal", "brown"
+    ]
+    return cycle(colors)
 
 # Class to represent a course
 class Course:
-    def __init__(self, class_number, prerequisites, group):
+    def __init__(self, class_number, name, group):
         self.class_number = class_number
-        self.prerequisites = prerequisites
+        self.name = name
         self.group = group
-        self.name = "Unknown"  # Will be updated with the name from the CSV file
+        self.prerequisites = []
 
     def __repr__(self):
-        return f"Course({self.class_number}, {self.prerequisites}, {self.group}, {self.name})"
+        return f"Course({self.class_number}, {self.name}, {self.group}, {self.prerequisites})"
 
+# Function to parse class details and groups from `classes.csv`
+def parse_classes(file_path):
+    """Parse course details and groups from a CSV file."""
+    courses = {}
+    group_colors = {}
+    color_generator = generate_colors()
 
-# Function to parse course names and map them to class numbers
-def parse_course_names(file_path):
-    """Parse course names from a CSV file."""
-    course_names = {}
     with open(file_path, newline='', encoding='utf-8') as csvfile:
         reader = csv.DictReader(csvfile)
         for row in reader:
             class_number = row["Class Number:"].strip()
-            class_name = row["Class Name:"].strip()
-            course_names[class_number] = class_name
-    return course_names
+            name = row["Class Name:"].strip()
+            group = row["Group:"].strip()  # Extract group information
 
+            # Assign a color to the group if not already assigned
+            if group not in group_colors:
+                group_colors[group] = next(color_generator)
 
-# Function to parse courses and prerequisites from the TSV file
-def parse_courses(file_path, course_names):
-    """Parse courses from a TSV file and update course names."""
-    course_map = {}
+            # Create a course object and store it
+            courses[class_number] = Course(class_number, name, group)
+
+    return courses, group_colors
+
+# Function to parse prerequisites from `prereqs.tsv`
+def parse_prerequisites(file_path, courses):
+    """Parse prerequisites from a TSV file and update courses."""
     with open(file_path, newline='', encoding='utf-8') as tsvfile:
         reader = csv.DictReader(tsvfile, delimiter='\t')
         for row in reader:
             class_number = row["Class Number:"].strip()
             prerequisites = row["Prerequisites:"].strip()
-            group = row["Group:"].strip()
-
-            # Parse prerequisites into groups
-            prereq_groups = [
-                [item.strip() for item in group.split("OR")]
-                for group in prerequisites.split(",") if prerequisites
-            ]
-
-            # Create a Course object and add to the map
-            course = Course(class_number, prereq_groups, group)
-            course.name = course_names.get(class_number, "Unknown")  # Fetch course name from CSV
-            course_map[class_number] = course
-    return course_map
-
+            if class_number in courses:
+                prereq_groups = [
+                    [item.strip() for item in group.split("OR")]
+                    for group in prerequisites.split(",") if prerequisites
+                ]
+                courses[class_number].prerequisites.extend(prereq_groups)
 
 # Visualize the dependency graph interactively
-def visualize_courses_interactive(course_map):
+def visualize_courses_interactive(courses, group_colors):
     """Visualize the course dependency graph interactively with labels above nodes."""
     G = nx.DiGraph()  # Create a directed graph
 
     # Add nodes and edges
-    for course in course_map.values():
+    for course in courses.values():
         G.add_node(course.class_number, group=course.group, name=course.name)
         for prereq_group in course.prerequisites:
             for prereq in prereq_group:
-                if prereq in course_map:  # Add edge only if prerequisite exists
+                if prereq in courses:  # Add edge only if prerequisite exists
                     G.add_edge(prereq, course.class_number)
 
     # Define horizontal positions for each group
-    group_order = ["CoE Common Core", "CE Program Core Courses", "Core Electives", "Upper Level CE Electives", "Unknown"]
+    group_order = list(group_colors.keys())
     group_positions = {group: i for i, group in enumerate(group_order)}
 
     # Generate positions for nodes
@@ -126,7 +125,7 @@ def visualize_courses_interactive(course_map):
         name = G.nodes[node].get("name", "Unknown")
         node_text.append(node)  # Only display course number
         node_hovertext.append(f"{node}: {name}")  # Show course name on hover
-        node_color.append(GROUP_COLORS.get(group, "gray"))  # Default to gray if group not found
+        node_color.append(group_colors.get(group, "gray"))  # Default to gray if group not found
 
     node_trace = go.Scatter(
         x=node_x,
@@ -162,7 +161,7 @@ def visualize_courses_interactive(course_map):
     fig = go.Figure(
         data=[edge_trace, node_trace],
         layout=go.Layout(
-            title="Interactive Course Dependency Graph with Labels Above Nodes",
+            title="Interactive Course Dependency Graph with Dynamic Group Colors",
             titlefont_size=20,
             showlegend=False,
             hovermode="closest",
@@ -179,17 +178,17 @@ def visualize_courses_interactive(course_map):
 # Main function
 def main():
     # File paths
-    csv_file_path = "/Users/vnannapu/Desktop/course dependancy chart/All_Classes_and_Names.csv"
-    tsv_file_path = "/Users/vnannapu/Desktop/course dependancy chart/CE_Sample_Schedule.tsv"
+    classes_file = "./mnt/data/classes.csv"
+    prereqs_file = "./mnt/data/prereqs.tsv"
 
-    # Parse course names
-    course_names = parse_course_names(csv_file_path)
+    # Parse course details and groups
+    courses, group_colors = parse_classes(classes_file)
 
-    # Parse courses and prerequisites
-    course_map = parse_courses(tsv_file_path, course_names)
+    # Parse prerequisites
+    parse_prerequisites(prereqs_file, courses)
 
     # Visualize the dependency graph interactively
-    visualize_courses_interactive(course_map)
+    visualize_courses_interactive(courses, group_colors)
 
 
 if __name__ == "__main__":
