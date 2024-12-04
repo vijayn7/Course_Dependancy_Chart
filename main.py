@@ -79,7 +79,7 @@ def parse_prerequisites(file_path, courses):
                 courses[class_number].prerequisites.extend(prereq_groups)
 
 # Create the graph figure dynamically
-def create_figure(courses, group_colors, group_credits):
+def create_figure(courses, group_colors, group_credits, hover_node=None):
     """Create the Plotly figure with the current state of the graph."""
     G = nx.DiGraph()  # Create a directed graph
     group_completed_credits = {group: 0 for group in group_credits}
@@ -108,19 +108,36 @@ def create_figure(courses, group_colors, group_credits):
         group_counters[group] += 1
         pos[node] = (x, y)
 
-    # Create edge traces
-    edge_x = []
-    edge_y = []
+    # Separate edges into highlighted and default
+    highlighted_edge_x = []
+    highlighted_edge_y = []
+    default_edge_x = []
+    default_edge_y = []
+
     for edge in G.edges():
         x0, y0 = pos[edge[0]]
         x1, y1 = pos[edge[1]]
-        edge_x.extend([x0, x1, None])
-        edge_y.extend([y0, y1, None])
+        if hover_node and (edge[0] == hover_node or edge[1] == hover_node):
+            highlighted_edge_x.extend([x0, x1, None])
+            highlighted_edge_y.extend([y0, y1, None])
+        else:
+            default_edge_x.extend([x0, x1, None])
+            default_edge_y.extend([y0, y1, None])
 
-    edge_trace = go.Scatter(
-        x=edge_x,
-        y=edge_y,
+    # Default edges
+    default_edge_trace = go.Scatter(
+        x=default_edge_x,
+        y=default_edge_y,
         line=dict(width=1, color="#888"),
+        hoverinfo="none",
+        mode="lines"
+    )
+
+    # Highlighted edges
+    highlighted_edge_trace = go.Scatter(
+        x=highlighted_edge_x,
+        y=highlighted_edge_y,
+        line=dict(width=2, color="red"),
         hoverinfo="none",
         mode="lines"
     )
@@ -185,9 +202,9 @@ def create_figure(courses, group_colors, group_credits):
 
     # Combine traces and layout
     fig = go.Figure(
-        data=[edge_trace, node_trace],
+        data=[default_edge_trace, highlighted_edge_trace, node_trace],
         layout=go.Layout(
-            title="Interactive Course Dependency Graph with Toggle",
+            title="Interactive Course Dependency Graph with Edge Highlighting",
             titlefont_size=20,
             showlegend=False,
             hovermode="closest",
@@ -218,21 +235,20 @@ def main():
 
     app.layout = html.Div([
         dcc.Graph(id="course-graph", config={"displayModeBar": False}),
-        html.Div(id="click-data", style={"display": "none"})  # Hidden div to store click data
+        html.Div(id="hover-data", style={"display": "none"}),  # Hidden div to store hover data
     ])
 
     @app.callback(
         Output("course-graph", "figure"),
-        [Input("course-graph", "clickData")]
+        [Input("course-graph", "hoverData")]
     )
-    def toggle_completion(click_data):
-        if click_data:
-            node_id = click_data["points"][0]["text"]  # Extract clicked node ID
-            if node_id in courses:
-                courses[node_id].completed = not courses[node_id].completed  # Toggle completion status
-        return create_figure(courses, group_colors, group_credits)
+    def highlight_edges(hover_data):
+        hover_node = None
+        if hover_data:
+            hover_node = hover_data["points"][0]["text"]
+        return create_figure(courses, group_colors, group_credits, hover_node)
 
-    # Initial rendering
+    # Run the app
     app.run_server(debug=True)
 
 if __name__ == "__main__":
