@@ -1,6 +1,7 @@
 import csv
 import networkx as nx
 import plotly.graph_objects as go
+from dash import Dash, dcc, html, Input, Output
 from itertools import cycle
 
 # Define a function to generate colors dynamically
@@ -77,17 +78,17 @@ def parse_prerequisites(file_path, courses):
                 ]
                 courses[class_number].prerequisites.extend(prereq_groups)
 
-# Visualize the dependency graph interactively
-def visualize_courses_interactive(courses, group_colors, group_credits):
-    """Visualize the course dependency graph interactively with labels above nodes."""
+# Create the graph figure dynamically
+def create_figure(courses, group_colors, group_credits):
+    """Create the Plotly figure with the current state of the graph."""
     G = nx.DiGraph()  # Create a directed graph
+    group_completed_credits = {group: 0 for group in group_credits}
 
     # Add nodes and edges
-    group_completed_credits = {group: 0 for group in group_credits}  # Initialize completed credits per group
     for course in courses.values():
         G.add_node(course.class_number, group=course.group, name=course.name, credits=course.credits, completed=course.completed)
         if course.completed:
-            group_completed_credits[course.group] += course.credits  # Accumulate completed credits
+            group_completed_credits[course.group] += course.credits
         for prereq_group in course.prerequisites:
             for prereq in prereq_group:
                 if prereq in courses:  # Add edge only if prerequisite exists
@@ -96,25 +97,16 @@ def visualize_courses_interactive(courses, group_colors, group_credits):
     # Define horizontal positions for each group
     group_order = list(group_colors.keys())
     group_positions = {group: i for i, group in enumerate(group_order)}
-
-    # Generate positions for nodes
     pos = {}
-    group_counters = {group: 0 for group in group_order}  # Track vertical position within each group
-    vertical_spacing = 3  # Adjust vertical spacing between nodes
+    group_counters = {group: 0 for group in group_order}
+    vertical_spacing = 3
+
     for node in G.nodes():
         group = G.nodes[node].get("group", "Unknown")
-        x = group_positions[group] * 5  # Spread groups horizontally
-        y = group_counters[group] * -vertical_spacing  # Space nodes vertically within each group
+        x = group_positions[group] * 5
+        y = group_counters[group] * -vertical_spacing
         group_counters[group] += 1
         pos[node] = (x, y)
-
-    # Add group labels with credits progress
-    # Add group labels with credits progress
-    group_labels = []
-    for group, x in group_positions.items():
-        completed = group_completed_credits.get(group, 0)
-        required = group_credits.get(group, 0)
-        group_labels.append((x * 5, 2, f"{group}<br>({completed}/{required} credits completed)"))  # Line break added
 
     # Create edge traces
     edge_x = []
@@ -133,84 +125,82 @@ def visualize_courses_interactive(courses, group_colors, group_credits):
         mode="lines"
     )
 
-    # Create node traces with updated label positions
+    # Create node traces
     node_x = []
     node_y = []
     node_text = []
     node_hovertext = []
     node_color = []
-    node_border_color = []  # Add a border color for completed nodes
-    node_size = []  # Different size for completed nodes
+    node_border_color = []
+    node_size = []
+
     for node in G.nodes():
         x, y = pos[node]
         node_x.append(x)
         node_y.append(y)
         group = G.nodes[node].get("group", "Unknown")
         name = G.nodes[node].get("name", "Unknown")
-        credits = G.nodes[node].get("credits", "0")
+        credits = G.nodes[node].get("credits", 0)
         completed = G.nodes[node].get("completed", False)
 
-        node_text.append(node)  # Only display course number
-        node_hovertext.append(f"{node}: {name} ({credits} credits)")  # Show course name and credits on hover
-        node_color.append(group_colors.get(group, "gray"))  # Default to gray if group not found
+        node_text.append(node)
+        node_hovertext.append(f"{node}: {name} ({credits} credits)")
+        node_color.append(group_colors.get(group, "gray"))
 
-        # Highlight completed nodes
         if completed:
             node_border_color.append("gold")
-            node_size.append(30)  # Larger size for completed nodes
+            node_size.append(30)
         else:
             node_border_color.append("black")
-            node_size.append(20)  # Default size for uncompleted nodes
+            node_size.append(20)
 
     node_trace = go.Scatter(
         x=node_x,
         y=node_y,
         mode="markers+text",
-        text=node_text,  # Display course numbers only
-        hovertext=node_hovertext,  # Display course name and credits on hover
+        text=node_text,
+        hovertext=node_hovertext,
         hoverinfo="text",
-        textposition="top center",  # Position text above nodes
+        textposition="top center",
         marker=dict(
-            size=node_size,  # Set node size dynamically
+            size=node_size,
             color=node_color,
-            opacity=0.8,  # Set opacity for semi-transparent squares
-            symbol="square",  # Rectangle shape
-            line=dict(width=3, color=node_border_color)  # Set border color dynamically
-        ),
-        textfont=dict(
-            size=14,  # Adjust text size for readability
-            color="black"  # Set text color to black
+            opacity=0.8,
+            symbol="square",
+            line=dict(width=3, color=node_border_color)
         )
     )
 
-    # Add group labels as annotations
-    annotations = [
+    # Add group labels
+    group_labels = [
         dict(
-            x=x, y=y, text=label, showarrow=False,
+            x=group_positions[group] * 5,
+            y=2,
+            text=f"{group}<br>({group_completed_credits.get(group, 0)}/{group_credits.get(group, 0)} credits completed)",
+            showarrow=False,
             font=dict(size=16, color="black"),
             xanchor="center", yanchor="bottom"
-        ) for x, y, label in group_labels
+        ) for group in group_colors
     ]
 
     # Combine traces and layout
     fig = go.Figure(
         data=[edge_trace, node_trace],
         layout=go.Layout(
-            title="Interactive Course Dependency Graph with Dynamic Group Colors and Credits Progress",
+            title="Interactive Course Dependency Graph with Toggle",
             titlefont_size=20,
             showlegend=False,
             hovermode="closest",
             margin=dict(b=0, l=0, r=0, t=50),
             xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
             yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-            annotations=annotations  # Add group labels
+            annotations=group_labels
         )
     )
 
-    # Show the graph
-    fig.show()
+    return fig
 
-# Main function
+# Main function with Dash app
 def main():
     # File paths
     classes_file = "./mnt/data/classes.csv"
@@ -219,16 +209,30 @@ def main():
 
     # Parse course details and groups
     courses, group_colors = parse_classes(classes_file)
-
-    # Parse group credits
     group_credits = parse_group_credits(groups_file)
-
-    # Parse prerequisites
     parse_prerequisites(prereqs_file, courses)
 
-    # Visualize the dependency graph interactively
-    visualize_courses_interactive(courses, group_colors, group_credits)
+    # Initialize Dash app
+    app = Dash(__name__)
 
+    app.layout = html.Div([
+        dcc.Graph(id="course-graph", config={"displayModeBar": False}),
+        html.Div(id="click-data", style={"display": "none"})  # Hidden div to store click data
+    ])
+
+    @app.callback(
+        Output("course-graph", "figure"),
+        [Input("course-graph", "clickData")]
+    )
+    def toggle_completion(click_data):
+        if click_data:
+            node_id = click_data["points"][0]["text"]  # Extract clicked node ID
+            if node_id in courses:
+                courses[node_id].completed = not courses[node_id].completed  # Toggle completion status
+        return create_figure(courses, group_colors, group_credits)
+
+    # Initial rendering
+    app.run_server(debug=True)
 
 if __name__ == "__main__":
     main()
